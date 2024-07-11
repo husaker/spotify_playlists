@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto-resizable Textarea Form</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Write tracks in the form below</h1>
+        <form method="post" class="stretch-form" onsubmit="return sendData()">
+            <label for="songs">Structure: (1. 00:00 Artist - Song_name.mp3)</label>
+            <textarea id="songs" name="songs" rows="1" required oninput="resizeTextarea(this)"></textarea>
+            <br><br>
+            <label for="album">Album Name:</label>
+            <textarea id="album" name="album" rows="1" required oninput="resizeTextarea(this)"></textarea>
+            <br><br>
+            <button type="submit">Submit</button>
+        </form>
+    </div>
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
