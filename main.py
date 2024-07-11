@@ -1,61 +1,26 @@
+import re
 import spotipy
 import time
 import pandas as pd
 from spotipy.oauth2 import SpotifyOAuth
-from flask import Flask, request, url_for, session, redirect
+from flask import Flask, request, url_for, session, redirect, render_template
 from datetime import datetime
 
-now_day = datetime.now().strftime("%Y-%m-%d")
+now_day = datetime.now().strftime("%d-%m-%y")
 app = Flask(__name__)
 
-data = """1. 1:00 Bloodmasta Cut,k-sette,Hoody - Alice In Wonderland.mp3
- 2. 2:08 Jean Tonique - too bad.mp3
- 3. 5:10 Inner Wave - Schemin.mp3
- 4. 7:17 Wet Leg - Chaise Longue.mp3
- 5. 10:30 Nymano,JK the sage - Sunday Mornings.mp3
- 6. 12:10 Phil Tyler,Stasevich - Just Slam.mp3
- 7. 14:53 Enzzy Beatz - all cats are beautiful.mp3
- 8. 16:28 Bluewerks,Maple Syrup - Sunbeams.mp3
- 9. 18:52 Royel Otis - Foam.mp3
- 10. 21:52 Tour De Manège,Ours Samplus - Big Shit.mp3
- 11. 24:32 90sFlav - Drawup.mp3
- 12. 26:20 Parks, Squares And Alleys,Young And Dramatic - Passenger.mp3
- 13. 29:36 Marcoca,Nice Guys - I'm About to Disappear.mp3
- 14. 33:30 Tokyo Tea Room,Juravlove - Eat You Alive (Juravlove Remix).mp3
- 15. 39:12 Jazzinuf - Hugging You (Quietly).mp3
- 16. 40:58 Feng Suave - Tomb for Rockets.mp3
- 17. 45:12 Miel De Montagne - Relax le plexus.mp3
- 18. 48:20 Homeshake - Vacuum.mp3
- 19. 51:12 Her's - Cool with You.mp3
- 20. 57:20 Ed O.G - I'm Laughin'.mp3
- 21. 1:01:24 Kowloon - Life in Japan.mp3
- 22. 1:05:40 Phairo - Pelican.mp3
- 23. 1:09:28 Ariel Pink - Another Weekend.mp3
- 24. 1:13:32 Easy Life - daydreams.mp3
- 25. 1:16:00 Monma - Sneakers.mp3
- 26. 1:18:24 Goth Babe - Swami's.mp3"""
+def extract_song_and_artist(song_string):
+    # Регулярное выражение для извлечения информации
+    tracks = song_string.split(".mp3")[:len(song_string.split(".mp3"))-1] #последний элемент пустой, убираем его
+    splitted_songs = []
+    for line in tracks:
+        pattern = r"\d{1,2}:\d{2}\s(.+?)\s-\s(.+)"
+        splitted_songs.append(re.findall(pattern, line))
 
-data_splitted = data.split(".mp3")
-
-clean_splitted = []
-for line in data_splitted:
-    clean_splitted.append(line.strip('\n '))
-track_names = []
-artists = []
-for line in clean_splitted:
-    track_names.append(line[line.find(' - ') + 3:])
-
-for line in clean_splitted:
-    artists.append(line[line.rfind(':') + 4:line.find(' - ')])
-
-songs = pd.DataFrame({'song_title': track_names,
-                      'artist': artists})
-
-songs['track'] = songs['song_title'] + " " + songs['artist']
-songs = songs[:songs.shape[0] - 1]
+    return splitted_songs
 
 app.config['SESSION_COOKIE_NAME'] = 'Spotify Cookie'
-app.secret_key = 'agffsfdsf42%^!1323fsdf'
+app.secret_key = 'insert_app_secret_key'
 TOKEN_INFO = 'token_info'
 
 @app.route('/')
@@ -67,11 +32,15 @@ def login():
 def redirect_page():
     session.clear()
     code = request.args.get('code')
-    token_info = create_spotify_oath().get_access_token(code)
-    session[TOKEN_INFO] = token_info
-    return redirect(url_for('put_song_names', external= True))
+    try:
+        token_info = create_spotify_oath().get_access_token(code)
+        session[TOKEN_INFO] = token_info
+    except Exception as e:
+        print('Error retrieving token:', e)
+        return redirect(url_for('login'))
+    return redirect(url_for('put_song_names', external=True))
 
-@app.route('/putSongsName')
+@app.route('/putSongsName', methods=['GET', 'POST'])
 def put_song_names():
 
     try:
@@ -80,30 +49,57 @@ def put_song_names():
         print('user not logged in')
         return redirect('/')
 
-    sp = spotipy.Spotify(auth=token_info['access_token'])
-    user_id = sp.current_user()['id']
-
-    mnemonic_playlist_id = None
-
-    current_playlist = sp.user_playlists('spotify')['items']
-    for playlist in current_playlist:
-        if (playlist['name'] == f"Mnemonic {now_day}"):
-            return "playlist is alredy created"
-
+    #if request.method == 'GET':
+        #return render_template('index.html')
+    if request.method == 'POST':
+        data = request.form.to_dict()
+        songs = str(data['songs']) #получаем список из html формы
+        album_name = str(data['album'])
+        track_list = extract_song_and_artist(songs) #вытаскиваем треки и исполнителей
+        #track_list = track_list[:len(track_list)-2] #в возвращаемом списке последний элемент пустой, избавляемся от него
 
 
-    if not mnemonic_playlist_id:
-        new_playlist = sp.user_playlist_create(user_id, f'Mnemonic {now_day}', True)
-        mnemonic_playlist_id = new_playlist['id']
-        song_uris = []
-        for song in songs['track']:
-            song_uri = sp.search(song, type='track')['tracks']['items'][0]['uri']
-            song_uris.append(song_uri)
-        sp.user_playlist_add_tracks(user_id, mnemonic_playlist_id, song_uris, None)
+        sp = spotipy.Spotify(auth=token_info['access_token'])
+        user_id = sp.current_user()['id']
+
         mnemonic_playlist_id = None
-        return "playlist successfuly created"
+        infinite_playlist_id = None
+
+        current_playlists = sp.user_playlists(user_id)['items']
+        for playlist in current_playlists:
+            if (playlist['name'] == album_name):
+                return "Playlist has alredy been created"
+            elif (playlist['name'] == 'Mnemonic infinite'):
+                infinite_playlist_id = playlist['id']
+                tracks_infinite = sp.playlist_items(infinite_playlist_id)
+                infinite_song_uris = []
+                for track in tracks_infinite['items']:
+                    infinite_song_uris.append(track['track']['uri'])
 
 
+
+
+
+        if not mnemonic_playlist_id:
+            new_playlist = sp.user_playlist_create(user_id, album_name, True) # создаем новый плейлист
+            mnemonic_playlist_id = new_playlist['id'] # получаем id плейлиста
+
+            song_uris = []
+            for song in track_list:
+                song_uri = sp.search(q=(song[0][0]+" "+song[0][1]), type='track')['tracks']['items'][0]['uri']
+                song_uris.append(song_uri)
+
+            sp.user_playlist_add_tracks(user_id, mnemonic_playlist_id, song_uris, None)
+            if infinite_playlist_id:
+                infinite_song_uris_set = set(infinite_song_uris)
+                new_song_uris = [item for item in song_uris if item not in infinite_song_uris_set]
+
+                sp.user_playlist_add_tracks(user_id, infinite_playlist_id, new_song_uris, None)
+
+            mnemonic_playlist_id = None
+            return render_template('index.html')
+
+    return render_template('index.html')
 
 
 
@@ -119,8 +115,8 @@ def get_token():
     return token_info
 
 def create_spotify_oath():
-    return SpotifyOAuth(client_id = "INSERT_CLIENT_ID",
-                        client_secret = "INSERT_CLIENT_SECRET",
+    return SpotifyOAuth(client_id = "insert_client_id",
+                        client_secret = "insetr_client_secret",
                         redirect_uri = url_for('redirect_page', _external= True),
                         scope = 'playlist-read-private user-library-read, playlist-modify-public, playlist-modify-private')
 
