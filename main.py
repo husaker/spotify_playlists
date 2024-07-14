@@ -11,13 +11,14 @@ app = Flask(__name__)
 
 def extract_song_and_artist(song_string):
     # Регулярное выражение для извлечения информации
-    tracks = song_string.split(".mp3")[:len(song_string.split(".mp3"))-1] #последний элемент пустой, убираем его
+    tracks = song_string.replace('.mp4', ".mp3").split(".mp3")[:len(song_string.split(".mp3"))-1] #последний элемент пустой, убираем его
     splitted_songs = []
     for line in tracks:
         pattern = r"\d{1,2}:\d{2}\s(.+?)\s-\s(.+)"
         splitted_songs.append(re.findall(pattern, line))
-
-    return splitted_songs
+    df = pd.DataFrame(splitted_songs)
+    df.dropna(inplace=True)
+    return df.values
 
 app.config['SESSION_COOKIE_NAME'] = 'Spotify Cookie'
 app.secret_key = 'insert_app_secret_key'
@@ -80,7 +81,7 @@ def put_song_names():
 
 
 
-        if not mnemonic_playlist_id:
+                if not mnemonic_playlist_id:
             new_playlist = sp.user_playlist_create(user_id, album_name, True) # создаем новый плейлист
             mnemonic_playlist_id = new_playlist['id'] # получаем id плейлиста
 
@@ -93,8 +94,8 @@ def put_song_names():
             if infinite_playlist_id:
                 infinite_song_uris_set = set(infinite_song_uris)
                 new_song_uris = [item for item in song_uris if item not in infinite_song_uris_set]
-
-                sp.user_playlist_add_tracks(user_id, infinite_playlist_id, new_song_uris, None)
+                if len(new_song_uris) > 0:
+                    sp.user_playlist_add_tracks(user_id, infinite_playlist_id, new_song_uris, None)
 
             mnemonic_playlist_id = None
             return render_template('index.html')
